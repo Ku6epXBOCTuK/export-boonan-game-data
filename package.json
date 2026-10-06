@@ -1,8 +1,15 @@
 {
   "name": "project-exporter",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
+  "license": "MIT",
+  "author": "Ku6epXBOCTuK",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ku6epXBOCTuK/export-game-data.git"
+  },
+  "packageManager": "pnpm@12.4.1",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
@@ -11,7 +18,8 @@
     "@crxjs/vite-plugin": "^2.0.0-beta.32",
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "svelte": "^5.0.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-zip-pack": "^1.2.4"
   },
   "dependencies": {
     "jszip": "^3.10.1"

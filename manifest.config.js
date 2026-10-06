@@ -1,9 +1,10 @@
 import { defineManifest } from "@crxjs/vite-plugin";
+import pkg from "./package.json" with { type: "json" };
 
 export default defineManifest({
   manifest_version: 3,
   name: "Project Exporter",
-  version: "0.1.0",
+  version: pkg.version,
   description:
     "Экспорт проекта из редактора: все файлы по websocket + ассеты, одним zip.",
   action: { default_popup: "index.html" },
