@@ -34,6 +34,19 @@
       }
       socketOk = Boolean(pong.socket);
       phase = "ready";
+      // Экспорт живёт в странице и переживает закрытие popup —
+      // забираем снапшот и восстанавливаем UI
+      const st = await chrome.tabs.sendMessage(tabId, { type: "status" });
+      if (st?.running) {
+        phase = "running";
+        progress = st.progress;
+      } else if (st?.result) {
+        result = st.result;
+        phase = "done";
+      } else if (st?.error) {
+        errorMsg = st.error;
+        phase = "error";
+      }
     } catch {
       phase = "wrong-page";
     }

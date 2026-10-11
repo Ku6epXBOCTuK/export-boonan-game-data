@@ -120,7 +120,41 @@ function tryBase64(content) {
   }
 }
 
-// Простой пул параллельности.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Rate limiter: джиттер для нерегулярного ритма + жёсткое скользящее окно.
+// Гарантия: не больше perMinute запросов за windowMs при любом рандоме.
+export function createLimiter({ perMinute = 45, windowMs = 60000 } = {}) {
+  const stamps = [];
+  const base = windowMs / perMinute;
+  let chain = Promise.resolve();
+  let last = 0;
+
+  async function turn() {
+    // Джиттер: интервал 0.5x–1.5x от базы — средний темп ниже лимита,
+    // всплески срежет окно ниже
+    const delay = base * (0.5 + Math.random());
+    const sinceLast = Date.now() - last;
+    if (sinceLast < delay) await sleep(delay - sinceLast);
+    // Жёсткий потолок: не больше perMinute таймстампов в окне windowMs
+    while (stamps.length >= perMinute) {
+      const wait = stamps[0] + windowMs - Date.now() + 5;
+      if (wait > 0) await sleep(wait);
+      while (stamps.length && stamps[0] <= Date.now() - windowMs) stamps.shift();
+    }
+    stamps.push(Date.now());
+    last = Date.now();
+  }
+
+  // Вызовы сериализуются через chain — окно и джиттер считаются
+  // последовательно, параллельный пул снаружи лимит не обойдёт
+  return function schedule(fn) {
+    const p = chain.then(turn).then(fn);
+    chain = p.catch(() => {});
+    return p;
+  };
+}
+
 async function pool(items, limit, fn) {
   const results = new Array(items.length);
   let i = 0;
@@ -135,17 +169,19 @@ async function pool(items, limit, fn) {
   return results;
 }
 
-export async function readAllFiles(socket, files, onProgress) {
+export async function readAllFiles(socket, files, onProgress, schedule = (fn) => fn()) {
   let done = 0;
   return pool(files, 4, async (f) => {
-    const msg = await emitAndWait(
-      socket,
-      "read-file-project",
-      { folderName: f.folderName, fileName: f.fileName },
-      "file-contents-project",
-      (p) => p && p.folderName === f.folderName && p.fileName === f.fileName,
-      30000,
-      "file-read-error",
+    const msg = await schedule(() =>
+      emitAndWait(
+        socket,
+        "read-file-project",
+        { folderName: f.folderName, fileName: f.fileName },
+        "file-contents-project",
+        (p) => p && p.folderName === f.folderName && p.fileName === f.fileName,
+        30000,
+        "file-read-error",
+      ),
     );
     // Сервер отклонил чтение (бинарный файл и т.п.) — событие file-read-error
     if (msg.__error) {

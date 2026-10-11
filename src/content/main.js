@@ -13,17 +13,37 @@ import {
   collectAssetUrls,
   fetchAsset,
   assetZipPath,
+  createLimiter,
 } from "../lib/exporter.js";
 
 const TAG = "px-exporter";
 
+// Снапшот состояния — popup при открытии запрашивает status и
+// восстанавливает UI (экспорт идёт в странице и не умирает с popup)
+const state = {
+  running: false,
+  progress: { done: 0, total: 0, file: "", phase: "" },
+  result: null,
+  error: null,
+};
+
 function notify(msg) {
+  if (msg.type === "progress") state.progress = msg;
+  else if (msg.type === "done") {
+    state.running = false;
+    state.result = msg;
+  } else if (msg.type === "error") {
+    state.running = false;
+    state.error = msg.message;
+  }
   window.postMessage({ [TAG]: true, dir: "page", msg }, "*");
 }
 
 async function runExport(options = {}) {
   const { includeBuild = false, includeAssets = true } = options;
   const socket = await waitSocket();
+  // Лимит сайта 60 req/min — держим 45 с запасом, окно гарантирует потолок
+  const schedule = createLimiter({ perMinute: 45 });
 
   socket.onAny((event, a) => {
     console.log(
@@ -36,12 +56,14 @@ async function runExport(options = {}) {
   });
 
   notify({ type: "progress", phase: "tree", done: 0, total: 0, file: "" });
-  const tree = await emitAndWait(
-    socket,
-    "read-folder-project",
-    null,
-    "folder-contents-project",
-    (p) => Array.isArray(p),
+  const tree = await schedule(() =>
+    emitAndWait(
+      socket,
+      "read-folder-project",
+      null,
+      "folder-contents-project",
+      (p) => Array.isArray(p),
+    ),
   );
 
   let files = walkFiles(tree);
@@ -52,8 +74,11 @@ async function runExport(options = {}) {
   const directAssets = files.filter((f) => isAssetPath(f.path));
   files = files.filter((f) => !isAssetPath(f.path));
 
-  const read = await readAllFiles(socket, files, (p) =>
-    notify({ type: "progress", phase: "files", ...p }),
+  const read = await readAllFiles(
+    socket,
+    files,
+    (p) => notify({ type: "progress", phase: "files", ...p }),
+    schedule,
   );
 
   const zip = new JSZip();
@@ -77,7 +102,7 @@ async function runExport(options = {}) {
       // пробуем забрать по HTTP
       report.readErrors.push(`${f.path}: ${f.readError}`);
       try {
-        zip.file(f.path, await fetchAsset(`/project_url/${f.path}`));
+        zip.file(f.path, await schedule(() => fetchAsset(`/project_url/${f.path}`)));
         report.assetsFetched.push(f.path);
       } catch (e) {
         report.assetsFailed.push(`${f.path}: ${e.message}`);
@@ -93,7 +118,7 @@ async function runExport(options = {}) {
     assetDone++;
     notify({ type: "progress", phase: "assets", done: assetDone, total: directAssets.length, file: f.path });
     try {
-      zip.file(f.path, await fetchAsset(`/project_url/${f.path}`));
+      zip.file(f.path, await schedule(() => fetchAsset(`/project_url/${f.path}`)));
       report.assetsFetched.push(f.path);
     } catch (e) {
       report.assetsFailed.push(`${f.path}: ${e.message}`);
@@ -115,7 +140,7 @@ async function runExport(options = {}) {
       done++;
       notify({ type: "progress", phase: "assets", done, total: urls.length, file: u });
       try {
-        zip.file(assetZipPath(u), await fetchAsset(u));
+        zip.file(assetZipPath(u), await schedule(() => fetchAsset(u)));
         report.assetsFetched.push(u);
       } catch (e) {
         report.assetsFailed.push(`${u}: ${e.message}`);
@@ -150,7 +175,15 @@ window.addEventListener("message", (e) => {
     });
     return;
   }
+  if (msg?.type === "status") {
+    notify({ type: "state", ...state });
+    return;
+  }
   if (msg?.type === "export") {
+    if (state.running) return; // экспорт уже идёт — второй не запускаем
+    state.running = true;
+    state.result = null;
+    state.error = null;
     runExport(msg.options).then(
       (r) => notify({ type: "done", ...r }),
       (err) => notify({ type: "error", message: String(err?.message || err) }),
