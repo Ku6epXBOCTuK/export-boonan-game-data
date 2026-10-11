@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [0.2.0](https://github.com/Ku6epXBOCTuK/export-game-data/compare/d6d1d7e3a2a85d684d3cef210cbf51f17be175cb..0.2.0) - 2026-10-11
+#### Features
+- add rate limiter - ([eeef25b](https://github.com/Ku6epXBOCTuK/export-game-data/commit/eeef25bc5a47d421095ad2f716b75216ce397127)) - Ku6epXBOCTuK
+
+- - -
+
 ## [0.1.0](https://github.com/Ku6epXBOCTuK/export-game-data/compare/14ad952f990d6d12535e7bbfb22691cffe0ff028..0.1.0) - 2026-10-06
 #### Features
 - initial exporter - ([7352b6d](https://github.com/Ku6epXBOCTuK/export-game-data/commit/7352b6d690539edcf09397345511498d16046d60)) - Ku6epXBOCTuK
